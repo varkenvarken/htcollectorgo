@@ -42,6 +42,7 @@ func main() {
 	mux.HandleFunc("/storereading", collector.HandleStoreReading(db))
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/getreadings", collector.HandleGetReadings(db))
+	mux.HandleFunc("/updatename", collector.HandleUpdateName(db))
 
 	server := &http.Server{
 		Addr:    ":8080",

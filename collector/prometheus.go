@@ -2,21 +2,21 @@ package collector
 
 import (
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
 var (
-	Temperature = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "temperature",
-		Help: "The current temperature reading",
-	})
+	Temperature = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "htcollector",
+		Subsystem: "readings",
+		Name:      "temperature",
+		Help:      "The current temperature reading",
+	}, []string{"stationid"})
 
-	Humidity = prometheus.NewGauge(prometheus.GaugeOpts{
-		Name: "humidity",
-		Help: "The current humidity reading",
-	})
+	Humidity = promauto.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "htcollector",
+		Subsystem: "readings",
+		Name:      "humidity",
+		Help:      "The current humidity reading",
+	}, []string{"stationid"})
 )
-
-func init() {
-	prometheus.MustRegister(Temperature)
-	prometheus.MustRegister(Humidity)
-}
