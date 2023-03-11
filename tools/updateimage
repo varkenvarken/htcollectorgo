@@ -1,0 +1,4 @@
+#!/bin/bash
+
+docker compose build htcollectorgo
+docker push 192.168.4.6:5000/htcollectorgo

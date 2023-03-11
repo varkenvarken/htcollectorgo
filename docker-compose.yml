@@ -1,0 +1,22 @@
+version: '3.9'
+services:
+  htcollectorgo:
+    image: 192.168.4.6:5000/htcollectorgo
+    build: .
+    ports:
+      - 2112:2112
+    networks:
+      - htcollectorgo-net
+    environment:
+      - LOGLEVEL=debug
+    logging:
+      driver: "json-file"
+      options:
+        max-file: 3
+        max-size: 10m
+    restart: unless-stopped
+
+networks:
+  htcollectorgo-net:
+
+
