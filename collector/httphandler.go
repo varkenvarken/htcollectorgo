@@ -1,82 +1,99 @@
 package collector
 
 import (
-	"encoding/json"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-func HandleStoreReading(db *DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		tempStr := r.URL.Query().Get("temp")
-		humStr := r.URL.Query().Get("hum")
-		idStr := r.URL.Query().Get("id")
-		if tempStr == "" || humStr == "" || idStr == "" {
-			http.Error(w, "missing query parameter", http.StatusBadRequest)
-			return
-		}
-		temp, err := strconv.ParseFloat(tempStr, 64)
-		if err != nil {
-			http.Error(w, "invalid temp query parameter", http.StatusBadRequest)
-			return
-		}
-		hum, err := strconv.ParseFloat(humStr, 64)
-		if err != nil {
-			http.Error(w, "invalid hum query parameter", http.StatusBadRequest)
-			return
-		}
-		// TODO add check on length of stationid
-		db.SaveReading(temp, hum, idStr)
-		fmt.Fprintf(w, "stored reading: id=%s temp=%.1f hum=%.1f\n", idStr, temp, hum)
-
-		// prometheus gauges
-		Temperature.With(prometheus.Labels{"stationid": idStr}).Set(temp)
-		Humidity.With(prometheus.Labels{"stationid": idStr}).Set(hum)
+// Store a reading from a ShellyHT
+// note that this does *not* follow gin's regular parameter syntax
+func HandleStoreReading(c *gin.Context, db *DB) {
+	tempStr := c.Query("temp")
+	humStr := c.Query("hum")
+	idStr := c.Query("id")
+	if tempStr == "" || humStr == "" || idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing query parameter"})
+		return
 	}
+	temp, err := strconv.ParseFloat(tempStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid temp query parameter"})
+		return
+	}
+	hum, err := strconv.ParseFloat(humStr, 64)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid hum query parameter"})
+		return
+	}
+	// TODO add check on length of stationid
+	db.SaveReading(temp, hum, idStr)
+
+	c.JSON(http.StatusOK, Reading{StationId: idStr, Temperature: temp, Humidity: hum})
+
+	// prometheus gauges
+	Temperature.With(prometheus.Labels{"stationid": idStr}).Set(temp)
+	Humidity.With(prometheus.Labels{"stationid": idStr}).Set(hum)
 }
 
-func HandleGetReadings(db *DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		// Calculate the timestamp 24 hours ago
-		since := time.Now().Add(-24 * time.Hour)
+func HandleReadings(c *gin.Context, db *DB) {
+	// Calculate the timestamp 24 hours ago
+	since := time.Now().Add(-24 * time.Hour)
 
-		idStr := r.URL.Query().Get("id")
-		if idStr == "" {
-			http.Error(w, "missing query parameter", http.StatusBadRequest)
-			return
-		}
-		// Retrieve readings from the database since the specified time
-		readings, err := db.GetReadingsSince(since, idStr)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		// Encode the readings as JSON and write to the response
-		jsonBytes, err := json.Marshal(readings)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		w.Write(jsonBytes)
+	idStr := c.Param("id")
+	if idStr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Missing stationid"})
+		return
 	}
+	// Retrieve readings from the database since the specified time
+	readings, err := db.GetReadingsSince(since, idStr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot retrieve readings"})
+		return
+	}
+
+	c.JSON(http.StatusOK, readings)
 }
 
-func HandleUpdateName(db *DB) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		stationid := r.URL.Query().Get("stationid")
-		name := r.URL.Query().Get("name")
-		if stationid == "" || name == ""{
-			http.Error(w, "missing query parameter", http.StatusBadRequest)
-			return
-		}
-		db.UpdateName(stationid, name)
-		fmt.Fprintf(w, "updated: id=%s name=%s\n", stationid, name)
+func HandleAllReadings(c *gin.Context, db *DB) {
+	// Calculate the timestamp 24 hours ago
+	since := time.Now().Add(-24 * time.Hour)
+
+	// Retrieve readings from the database since the specified time
+	readings, err := db.GetAllReadingsSince(since)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot retrieve readings"})
+		return
+	}
+
+	c.JSON(http.StatusOK, readings)
+}
+
+func HandleAllNames(c *gin.Context, db *DB) {
+	stationnames, err := db.GetStationNames()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot retrieve stationnames"})
+		return
+	}
+
+	c.JSON(http.StatusOK, stationnames)
+}
+
+func HandleName(c *gin.Context, db *DB) {
+	var station Station
+
+	if err := c.ShouldBind(&station); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if err := db.UpdateName(&station); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Cannot update stationname"})
+		return
+	} else {
+		c.JSON(http.StatusCreated, station)
 	}
 }

@@ -1,15 +1,16 @@
 package main
 
 import (
-	"net/http"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	//"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/varkenvarken/htcollectorgo/collector"
 )
@@ -38,18 +39,29 @@ func main() {
 	db := collector.MustInitDB("readings.db")
 	defer db.Close()
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/storereading", collector.HandleStoreReading(db))
-	mux.Handle("/metrics", promhttp.Handler())
-	mux.HandleFunc("/getreadings", collector.HandleGetReadings(db))
-	mux.HandleFunc("/updatename", collector.HandleUpdateName(db))
+	r := gin.Default()
 
-	server := &http.Server{
-		Addr:    ":8080",
-		Handler: mux,
-	}
+	r.GET("/storereading", func(c *gin.Context) {
+		collector.HandleStoreReading(c, db)
+	})
 
-	if server.ListenAndServe() != nil {
-		log.Fatal().Str("Addr", server.Addr).Msg("Cannot listen on address. Terminating htcollector")
-	}
+	r.GET("/readings/:id", func(c *gin.Context) {
+		collector.HandleReadings(c, db)
+	})
+
+	r.GET("/readings", func(c *gin.Context) {
+		collector.HandleAllReadings(c, db)
+	})
+
+	r.GET("/names", func(c *gin.Context) {
+		collector.HandleAllNames(c, db)
+	})
+
+	r.POST("/names", func(c *gin.Context) {
+		collector.HandleName(c, db)
+	})
+
+	r.GET("metrics", collector.PrometheusHandler())
+
+	r.Run(":1883")
 }
